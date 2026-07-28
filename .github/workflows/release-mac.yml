@@ -1,0 +1,111 @@
+# Standalone macOS DMG build.
+#
+# The main release.yml already builds macOS DMGs, but only as one leg of the
+# full release pipeline: it runs on blacksmith-* self-hosted runners and needs
+# Clerk/relay config, an npm publish token and a Discord webhook. None of that
+# resolves in a fork, so this workflow builds the same artifact standalone on a
+# GitHub-hosted runner.
+#
+# Builds arm64 only (every Mac since 2020). To also ship Intel, turn the job
+# into a matrix over arch and pass it to the dist script.
+name: Release Mac
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (for example v0.0.24)"
+        required: true
+        type: string
+      source_ref:
+        description: "Branch or commit to build"
+        required: false
+        default: main
+        type: string
+      prerelease:
+        description: "Mark the GitHub Release as a prerelease"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-mac-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release_mac:
+    name: Build and publish macOS DMG
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+      RELEASE_SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.source_ref || github.ref }}
+      RELEASE_PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.prerelease || 'false' }}
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SOURCE_REF }}
+          fetch-depth: 0
+
+      # Tag pushes carry their own commit; a workflow_dispatch build resolves
+      # whatever source_ref pointed at, so the release is pinned to the exact
+      # tree that produced the DMG.
+      - id: release_commit
+        name: Resolve release commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      # The dist script does not install the Electron runtime itself, so the
+      # desktop build needs the same explicit step CI uses.
+      - name: Ensure Electron runtime is installed
+        run: vp run --filter @t3tools/desktop ensure:electron
+
+      - name: Format
+        run: vp fmt --check
+
+      - name: Lint
+        run: vp lint --report-unused-disable-directives
+
+      - name: Typecheck
+        run: vp run -r --concurrency-limit 2 typecheck
+
+      - name: Build macOS DMG
+        run: vp run dist:desktop:dmg:arm64
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg-arm64
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.blockmap
+            release/*.yml
+          if-no-files-found: error
+
+      - name: Publish GitHub Release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ steps.release_commit.outputs.sha }}
+          generate_release_notes: true
+          prerelease: ${{ env.RELEASE_PRERELEASE }}
+          files: |
+            release/*.dmg
+            release/*.zip
+            release/*.blockmap
+            release/*.yml
+          fail_on_unmatched_files: true
