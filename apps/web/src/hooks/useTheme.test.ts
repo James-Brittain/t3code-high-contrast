@@ -191,3 +191,50 @@ describe("theme failure handling", () => {
     }
   });
 });
+
+describe("high-contrast themes", () => {
+  it("applies the family and variant classes alongside dark", async () => {
+    const toggle = vi.fn();
+    vi.stubGlobal("window", {
+      localStorage: createStorage({ getItem: () => "contrast-violet" }),
+      matchMedia: () => ({ matches: false }),
+    });
+    vi.stubGlobal("document", { documentElement: { classList: { toggle } } });
+
+    await expect(import("./useTheme")).resolves.toBeDefined();
+
+    // `.dark` stays on so the variants inherit the dark theme's structural
+    // styling and only re-point colour tokens.
+    expect(toggle).toHaveBeenCalledWith("dark", true);
+    expect(toggle).toHaveBeenCalledWith("high-contrast", true);
+    expect(toggle).toHaveBeenCalledWith("contrast-violet", true);
+    expect(toggle).toHaveBeenCalledWith("contrast-dark", false);
+    expect(toggle).toHaveBeenCalledWith("contrast-ocean", false);
+  });
+
+  it("keeps a stored variant and reports it as dark to the desktop shell", async () => {
+    const setTheme = vi.fn(() => Promise.resolve());
+    const win = {
+      localStorage: createStorage({ getItem: () => "contrast-ocean" }),
+      matchMedia: () => ({ matches: false }),
+      desktopBridge: undefined as { setTheme: typeof setTheme } | undefined,
+    };
+    vi.stubGlobal("window", win);
+    vi.stubGlobal("document", { documentElement: { classList: { toggle: vi.fn() } } });
+
+    const { readThemePreference, syncDesktopTheme } = await import("./useTheme");
+
+    expect(readThemePreference()).toBe("contrast-ocean");
+
+    win.desktopBridge = { setTheme };
+    syncDesktopTheme("contrast-ocean");
+    await Promise.resolve();
+    // Native window chrome only understands light/dark/system, so switching
+    // between high-contrast variants must not re-notify the shell.
+    syncDesktopTheme("contrast-violet");
+    await Promise.resolve();
+
+    expect(setTheme).toHaveBeenCalledTimes(1);
+    expect(setTheme).toHaveBeenCalledWith("dark");
+  });
+});

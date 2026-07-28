@@ -15,17 +15,37 @@
       (() => {
         const LIGHT_BACKGROUND = "#ffffff";
         const DARK_BACKGROUND = "#161616";
+        // First-paint chrome colour per high-contrast variant, mirroring
+        // --background in index.css. useTheme re-syncs the exact computed value
+        // after hydration; these only stop a flash of the wrong dark.
+        const CONTRAST_BACKGROUNDS = {
+          "contrast-dark": "#080a0d",
+          "contrast-ocean": "#000b18",
+          "contrast-violet": "#0c0716",
+        };
         const themeColorMeta = document.querySelector('meta[name="theme-color"]');
         try {
           const storedTheme = window.localStorage.getItem("t3code:theme");
+          const contrastBackground =
+            storedTheme !== null && Object.hasOwn(CONTRAST_BACKGROUNDS, storedTheme)
+              ? CONTRAST_BACKGROUNDS[storedTheme]
+              : null;
           const theme =
-            storedTheme === "light" || storedTheme === "dark" || storedTheme === "system"
+            contrastBackground !== null ||
+            storedTheme === "light" ||
+            storedTheme === "dark" ||
+            storedTheme === "system"
               ? storedTheme
               : "system";
           const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-          const isDark = theme === "dark" || (theme === "system" && prefersDark);
+          const isDark =
+            theme === "dark" || contrastBackground !== null || (theme === "system" && prefersDark);
           document.documentElement.classList.toggle("dark", isDark);
-          const chromeColor = isDark ? DARK_BACKGROUND : LIGHT_BACKGROUND;
+          document.documentElement.classList.toggle("high-contrast", contrastBackground !== null);
+          for (const contrastTheme of Object.keys(CONTRAST_BACKGROUNDS)) {
+            document.documentElement.classList.toggle(contrastTheme, theme === contrastTheme);
+          }
+          const chromeColor = contrastBackground ?? (isDark ? DARK_BACKGROUND : LIGHT_BACKGROUND);
           document.documentElement.style.backgroundColor = chromeColor;
           themeColorMeta?.setAttribute("content", chromeColor);
         } catch {

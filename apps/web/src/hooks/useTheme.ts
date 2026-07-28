@@ -1,14 +1,35 @@
-import type { DesktopBridge } from "@t3tools/contracts";
+import type { DesktopBridge, DesktopTheme } from "@t3tools/contracts";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
 import * as Schema from "effect/Schema";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 
-const ThemePreference = Schema.Literals(["light", "dark", "system"]);
+const ThemePreference = Schema.Literals([
+  "light",
+  "dark",
+  "contrast-dark",
+  "contrast-ocean",
+  "contrast-violet",
+  "system",
+]);
 type Theme = typeof ThemePreference.Type;
 type ThemeSnapshot = {
   theme: Theme;
   systemDark: boolean;
 };
+
+const isThemePreference = Schema.is(ThemePreference);
+
+/**
+ * Opt-in high-contrast variants. Each one also applies `.dark`, so it inherits
+ * the dark theme's structural styling and only re-points colour tokens; the
+ * shared family class carries the contrast recipe those variants seed.
+ */
+const CONTRAST_THEMES = ["contrast-dark", "contrast-ocean", "contrast-violet"] as const;
+const CONTRAST_FAMILY_CLASS = "high-contrast";
+
+function isContrastTheme(theme: Theme): theme is (typeof CONTRAST_THEMES)[number] {
+  return (CONTRAST_THEMES as readonly Theme[]).includes(theme);
+}
 
 type DesktopThemeBridge = Pick<DesktopBridge, "setTheme">;
 
@@ -53,7 +74,7 @@ export const isDesktopThemeSyncError = Schema.is(DesktopThemeSyncError);
 
 let listeners: Array<() => void> = [];
 let lastSnapshot: ThemeSnapshot | null = null;
-let lastDesktopTheme: Theme | null = null;
+let lastDesktopTheme: DesktopTheme | null = null;
 let lastAppliedTheme: ThemeSnapshot | null = null;
 let themeStorageReadFailure: ThemeStorageError | null = null;
 
@@ -81,7 +102,7 @@ export function readThemePreference(): Theme {
       cause,
     });
   }
-  if (raw === "light" || raw === "dark" || raw === "system") return raw;
+  if (raw !== null && isThemePreference(raw)) return raw;
   return DEFAULT_THEME_SNAPSHOT.theme;
 }
 
@@ -184,8 +205,12 @@ function applyTheme(theme: Theme, suppressTransitions = false) {
   if (suppressTransitions) {
     document.documentElement.classList.add("no-transitions");
   }
-  const isDark = theme === "dark" || (theme === "system" && systemDark);
+  const isDark = theme === "dark" || isContrastTheme(theme) || (theme === "system" && systemDark);
   document.documentElement.classList.toggle("dark", isDark);
+  document.documentElement.classList.toggle(CONTRAST_FAMILY_CLASS, isContrastTheme(theme));
+  for (const contrastTheme of CONTRAST_THEMES) {
+    document.documentElement.classList.toggle(contrastTheme, theme === contrastTheme);
+  }
   lastAppliedTheme = { theme, systemDark };
   syncBrowserChromeTheme();
   syncDesktopTheme(theme);
@@ -201,7 +226,7 @@ function applyTheme(theme: Theme, suppressTransitions = false) {
 
 export async function syncDesktopThemePreference(
   bridge: DesktopThemeBridge,
-  theme: Theme,
+  theme: DesktopTheme,
 ): Promise<void> {
   try {
     await bridge.setTheme(theme);
@@ -213,23 +238,32 @@ export async function syncDesktopThemePreference(
 export function syncDesktopTheme(theme: Theme) {
   if (typeof window === "undefined") return;
   const bridge = window.desktopBridge;
-  if (!bridge || typeof bridge.setTheme !== "function" || lastDesktopTheme === theme) {
+  const desktopTheme = resolveDesktopTheme(theme);
+  if (!bridge || typeof bridge.setTheme !== "function" || lastDesktopTheme === desktopTheme) {
     return;
   }
 
-  lastDesktopTheme = theme;
-  void syncDesktopThemePreference(bridge, theme).catch((cause: unknown) => {
+  lastDesktopTheme = desktopTheme;
+  void syncDesktopThemePreference(bridge, desktopTheme).catch((cause: unknown) => {
     const error = isDesktopThemeSyncError(cause)
       ? cause
-      : new DesktopThemeSyncError({ theme, cause });
+      : new DesktopThemeSyncError({ theme: desktopTheme, cause });
     console.error(error.message, {
       theme: error.theme,
       ...safeErrorLogAttributes(error),
     });
-    if (lastDesktopTheme === theme) {
+    if (lastDesktopTheme === desktopTheme) {
       lastDesktopTheme = null;
     }
   });
+}
+
+/**
+ * The desktop shell's native chrome only understands light/dark/system, so
+ * every high-contrast variant reports as plain dark across the bridge.
+ */
+function resolveDesktopTheme(theme: Theme): DesktopTheme {
+  return isContrastTheme(theme) ? "dark" : theme;
 }
 
 // Apply immediately on module load to prevent flash
@@ -287,8 +321,16 @@ export function useTheme() {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const theme = snapshot.theme;
 
+  // Consumers (diff/syntax themes, editor chrome) only distinguish light from
+  // dark, so the high-contrast variants resolve to dark here.
   const resolvedTheme: "light" | "dark" =
-    theme === "system" ? (snapshot.systemDark ? "dark" : "light") : theme;
+    theme === "system"
+      ? snapshot.systemDark
+        ? "dark"
+        : "light"
+      : theme === "light"
+        ? "light"
+        : "dark";
 
   const setTheme = useCallback((next: Theme) => {
     if (typeof window === "undefined") return;

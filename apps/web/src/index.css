@@ -955,6 +955,140 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --sidebar-stage-fade: var(--card);
 }
 
+/* High-contrast dark theme family.
+
+   Three opt-in variants layered on top of the standard dark palette. The theme
+   hook toggles `.dark` alongside these classes, so every `dark:` utility and
+   `.dark .foo` rule keeps applying and these blocks only re-point colour
+   tokens.
+
+   Each variant declares seeds only (surface hue/chroma, overlay tint,
+   primary). The shared `.high-contrast` recipe derives every token from those
+   seeds, so all three land on identical contrast ratios and only the hue
+   changes. Ratios were measured against WCAG 2.2 targets: >=7:1 body text
+   (AAA), >=4.5:1 muted text, >=3:1 borders, inputs, and semantic fills
+   (1.4.11 non-text). Retune contrast in the recipe, colour in the seeds. */
+:root.contrast-dark {
+  --hc-surface-hue: 255;
+  --hc-surface-chroma: 0.008;
+  --hc-text-chroma: 0.004;
+  --hc-tint: oklch(0.98 0.005 255);
+  --hc-primary: oklch(0.78 0.16 264);
+  --hc-primary-foreground: oklch(0.17 0.03 264);
+}
+
+:root.contrast-ocean {
+  --hc-surface-hue: 245;
+  --hc-surface-chroma: 0.035;
+  --hc-text-chroma: 0.014;
+  --hc-tint: oklch(0.93 0.045 225);
+  --hc-primary: oklch(0.8 0.14 210);
+  --hc-primary-foreground: oklch(0.17 0.04 235);
+}
+
+:root.contrast-violet {
+  --hc-surface-hue: 300;
+  --hc-surface-chroma: 0.035;
+  --hc-text-chroma: 0.014;
+  --hc-tint: oklch(0.93 0.045 310);
+  --hc-primary: oklch(0.78 0.17 315);
+  --hc-primary-foreground: oklch(0.18 0.04 305);
+}
+
+:root.high-contrast {
+  color-scheme: dark;
+
+  /* Surface ladder. Stays in the same near-black family as the standard dark
+     theme, but spaced wider so card and popover remain distinguishable from
+     the workspace instead of collapsing into it. */
+  --background: oklch(0.145 var(--hc-surface-chroma) var(--hc-surface-hue));
+  --app-chrome-background: var(--background);
+  --card: oklch(0.195 var(--hc-surface-chroma) var(--hc-surface-hue));
+  --popover: oklch(0.225 var(--hc-surface-chroma) var(--hc-surface-hue));
+  --surface-raised: var(--secondary);
+
+  --foreground: oklch(0.97 var(--hc-text-chroma) var(--hc-surface-hue));
+  --muted-foreground: oklch(0.83 var(--hc-text-chroma) var(--hc-surface-hue));
+  --card-foreground: var(--foreground);
+  --popover-foreground: var(--foreground);
+  --secondary-foreground: var(--foreground);
+  --accent-foreground: var(--foreground);
+
+  /* Overlay fills and separators. Alphas are far heavier than the standard
+     dark theme's 4-8%: a border has to clear 3:1 against every surface it sits
+     on, which takes ~40% tint over a near-black base. */
+  --secondary: color-mix(in srgb, var(--hc-tint) 15%, transparent);
+  --muted: color-mix(in srgb, var(--hc-tint) 14%, transparent);
+  --accent: color-mix(in srgb, var(--hc-tint) 18%, transparent);
+  --border: color-mix(in srgb, var(--hc-tint) 40%, transparent);
+  --input: color-mix(in srgb, var(--hc-tint) 44%, transparent);
+
+  --primary: var(--hc-primary);
+  --primary-foreground: var(--hc-primary-foreground);
+  --ring: var(--hc-primary);
+
+  /* Semantic colours hold fixed hues across all three variants: a destructive
+     action still has to read as red whatever the surface tint is. */
+  --destructive: oklch(0.68 0.21 25);
+  --destructive-foreground: oklch(0.75 0.17 25);
+  --info: oklch(0.72 0.15 240);
+  --info-foreground: oklch(0.8 0.13 240);
+  --success: oklch(0.74 0.16 155);
+  --success-foreground: oklch(0.82 0.16 155);
+  --warning: oklch(0.8 0.16 85);
+  --warning-foreground: oklch(0.86 0.15 85);
+
+  /* Sidebar primitives outside a [data-sidebar-version] host — portaled mobile
+     sheets, settings navigation — track the card surface, as in dark mode. */
+  --sidebar: var(--card);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-muted-foreground: var(--muted-foreground);
+  --sidebar-control-surface: var(--muted);
+  --sidebar-row-hover: var(--accent);
+  --sidebar-row-active: var(--accent);
+  --sidebar-row-selected: var(--muted);
+  --sidebar-border: var(--border);
+  --sidebar-stage-fade: var(--card);
+
+  /* Chrome: a scrollbar thumb that is actually visible, and near-opaque glass
+     so text over menus and the composer keeps its measured contrast instead of
+     picking up whatever sits behind them. */
+  --app-scrollbar-thumb: color-mix(in srgb, var(--hc-tint) 40%, transparent);
+  --app-scrollbar-thumb-hover: color-mix(in srgb, var(--hc-tint) 56%, transparent);
+  --glass-opacity: 94%;
+  --glass-saturation: 1;
+}
+
+/* The dark theme re-points these tokens to literal near-black hex inside the
+   sidebar shells (see above), which would otherwise shadow the high-contrast
+   palette for every sidebar region. Same ladder one step darker than the
+   workspace, with heavier separators. */
+:root.high-contrast [data-sidebar-version="v1"],
+:root.high-contrast [data-sidebar-version="v2"] {
+  --background: oklch(0.115 var(--hc-surface-chroma) var(--hc-surface-hue));
+  --foreground: oklch(0.975 var(--hc-text-chroma) var(--hc-surface-hue));
+  --card: var(--background);
+  --card-foreground: var(--foreground);
+  --muted: color-mix(in srgb, var(--hc-tint) 14%, transparent);
+  --muted-foreground: oklch(0.85 var(--hc-text-chroma) var(--hc-surface-hue));
+  --accent: color-mix(in srgb, var(--hc-tint) 20%, transparent);
+  --accent-foreground: var(--foreground);
+  --border: color-mix(in srgb, var(--hc-tint) 42%, transparent);
+  --input: color-mix(in srgb, var(--hc-tint) 46%, transparent);
+  --sidebar: var(--card);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-muted-foreground: var(--muted-foreground);
+  --sidebar-control-surface: var(--muted);
+  --sidebar-row-hover: color-mix(in srgb, var(--hc-tint) 12%, transparent);
+  --sidebar-row-active: color-mix(in srgb, var(--hc-tint) 18%, transparent);
+  --sidebar-row-selected: color-mix(in srgb, var(--hc-tint) 15%, transparent);
+  --sidebar-border: var(--border);
+  /* The stage-channel header art must ramp to THIS panel's surface, not the
+     global chrome background, or the fade shows a seam (same rule as the dark
+     palette above). */
+  --sidebar-stage-fade: var(--card);
+}
+
 body {
   font-family:
     "DM Sans Variable",

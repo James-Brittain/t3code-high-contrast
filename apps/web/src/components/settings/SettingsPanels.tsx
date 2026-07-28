@@ -112,7 +112,23 @@ const THEME_OPTIONS = [
     value: "dark",
     label: "Dark",
   },
+  {
+    value: "contrast-dark",
+    label: "High contrast",
+  },
+  {
+    value: "contrast-ocean",
+    label: "Ocean contrast",
+  },
+  {
+    value: "contrast-violet",
+    label: "Violet contrast",
+  },
 ] as const;
+
+function isThemeOption(value: string | null): value is (typeof THEME_OPTIONS)[number]["value"] {
+  return THEME_OPTIONS.some((option) => option.value === value);
+}
 
 const TIMESTAMP_FORMAT_LABELS = {
   locale: "System default",
@@ -567,7 +583,7 @@ export function GeneralSettingsPanel() {
             <Select
               value={theme}
               onValueChange={(value) => {
-                if (value === "system" || value === "light" || value === "dark") {
+                if (isThemeOption(value)) {
                   setTheme(value);
                 }
               }}
