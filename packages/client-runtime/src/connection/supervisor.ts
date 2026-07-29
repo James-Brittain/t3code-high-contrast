@@ -453,8 +453,17 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
                     return;
                   }
                   break;
-                case "ConnectRequested":
                 case "Wakeup":
+                  if (
+                    probeEvent.signal.reason === "application-active-reconnect" ||
+                    (probeEvent.signal.reason === "credentials-changed" &&
+                      target._tag === "RelayConnectionTarget")
+                  ) {
+                    yield* Fiber.interrupt(probe);
+                    return;
+                  }
+                  break;
+                case "ConnectRequested":
                   break;
               }
             }
