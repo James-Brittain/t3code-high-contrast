@@ -155,6 +155,39 @@ const makeHarness = Effect.fn("TestRemoteAuthorization.makeHarness")(function* (
 });
 
 describe("RemoteEnvironmentAuthorization", () => {
+  it.effect("reuses a validated bearer descriptor while issuing fresh websocket tickets", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        responses: [
+          Response.json(DESCRIPTOR),
+          websocketTicket("first-ticket"),
+          websocketTicket("second-ticket"),
+        ],
+      });
+
+      const [first, second] = yield* Effect.gen(function* () {
+        const remote = yield* RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization;
+        const authorize = () =>
+          remote.authorizeBearer({
+            expectedEnvironmentId: ENVIRONMENT_ID,
+            httpBaseUrl: ENDPOINT.httpBaseUrl,
+            wsBaseUrl: ENDPOINT.wsBaseUrl,
+            bearerToken: "bearer-token",
+          });
+        return [yield* authorize(), yield* authorize()] as const;
+      }).pipe(Effect.provide(harness.layer));
+
+      expect(first.socketUrl).toContain("wsTicket=first-ticket");
+      expect(second.socketUrl).toContain("wsTicket=second-ticket");
+      expect(
+        harness.fetch.calls.filter(([url]) => String(url).endsWith("/.well-known/t3/environment")),
+      ).toHaveLength(1);
+      expect(
+        harness.fetch.calls.filter(([url]) => String(url).endsWith("/api/auth/websocket-ticket")),
+      ).toHaveLength(2);
+    }),
+  );
+
   it.effect("reuses a valid persisted environment token without contacting the relay", () =>
     Effect.gen(function* () {
       const cached = new TokenStore.RemoteDpopAccessToken({
@@ -265,7 +298,7 @@ describe("RemoteEnvironmentAuthorization", () => {
     }),
   );
 
-  it.effect("refreshes a cached endpoint after consecutive transient failures", () =>
+  it.effect("refreshes a cached endpoint after its first transient failure", () =>
     Effect.gen(function* () {
       const cached = new TokenStore.RemoteDpopAccessToken({
         environmentId: ENVIRONMENT_ID,
@@ -279,7 +312,6 @@ describe("RemoteEnvironmentAuthorization", () => {
         initialToken: cached,
         responses: [
           new Response("endpoint unavailable", { status: 503 }),
-          new Response("endpoint still unavailable", { status: 503 }),
           Response.json(DESCRIPTOR),
           accessToken("replacement-access-token"),
           websocketTicket("replacement-ticket"),
@@ -288,17 +320,6 @@ describe("RemoteEnvironmentAuthorization", () => {
 
       const authorized = yield* Effect.gen(function* () {
         const remote = yield* RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization;
-        const firstFailure = yield* remote
-          .authorizeDpop({
-            expectedEnvironmentId: ENVIRONMENT_ID,
-            obtainBootstrap: harness.obtainBootstrap,
-          })
-          .pipe(Effect.flip);
-
-        expect(firstFailure._tag).toBe("ConnectionTransientError");
-        expect(yield* Ref.get(harness.bootstrapCalls)).toBe(0);
-        expect((yield* Ref.get(harness.tokens)).get(ENVIRONMENT_ID)).toBe(cached);
-
         return yield* remote.authorizeDpop({
           expectedEnvironmentId: ENVIRONMENT_ID,
           obtainBootstrap: harness.obtainBootstrap,
@@ -312,7 +333,7 @@ describe("RemoteEnvironmentAuthorization", () => {
           accessToken: "replacement-access-token",
         }),
       );
-      expect(harness.fetch.calls).toHaveLength(5);
+      expect(harness.fetch.calls).toHaveLength(4);
     }),
   );
 

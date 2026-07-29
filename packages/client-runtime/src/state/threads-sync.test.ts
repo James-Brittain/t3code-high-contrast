@@ -696,6 +696,13 @@ describe("EnvironmentThreads", () => {
         (value) => value.status === "live" && Option.isSome(value.data),
       );
       expect(Option.getOrThrow(live.data).title).toBe("Latest title");
+
+      yield* Queue.offer(harness.wakeups, "application-active-probe");
+      yield* Queue.offer(harness.wakeups, "application-active-reconnect");
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        yield* Effect.yieldNow;
+      }
+      expect(yield* Ref.get(harness.subscriptionCount)).toBe(2);
     }),
   );
 });
