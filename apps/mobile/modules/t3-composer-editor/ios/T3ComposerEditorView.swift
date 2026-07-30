@@ -505,11 +505,7 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
     _ textDroppableView: UIView & UITextDroppable,
     proposalForDrop drop: UITextDropRequest
   ) -> UITextDropProposal {
-    let items = drop.dropSession.items
-    let containsOnlyImages = !items.isEmpty && items.allSatisfy {
-      $0.itemProvider.canLoadObject(ofClass: UIImage.self)
-    }
-    guard containsOnlyImages else {
+    guard droppedImageProviders(in: drop) != nil else {
       return drop.suggestedProposal
     }
 
@@ -525,13 +521,19 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
     _ textDroppableView: UIView & UITextDroppable,
     willPerformDrop drop: UITextDropRequest
   ) {
-    let imageProviders = drop.dropSession.items
-      .map(\.itemProvider)
-      .filter { $0.canLoadObject(ofClass: UIImage.self) }
-    guard !imageProviders.isEmpty else {
+    guard let imageProviders = droppedImageProviders(in: drop) else {
       return
     }
     textView.loadImages(from: imageProviders)
+  }
+
+  private func droppedImageProviders(in drop: UITextDropRequest) -> [NSItemProvider]? {
+    let providers = drop.dropSession.items.map(\.itemProvider)
+    guard !providers.isEmpty,
+          providers.allSatisfy({ $0.canLoadObject(ofClass: UIImage.self) }) else {
+      return nil
+    }
+    return providers
   }
 
   public func textViewDidBeginEditing(_ textView: UITextView) {
