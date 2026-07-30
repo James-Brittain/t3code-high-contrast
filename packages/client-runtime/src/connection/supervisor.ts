@@ -64,6 +64,7 @@ type AttemptOutcome =
       readonly _tag: "Interrupted";
       readonly established: boolean;
       readonly stable: boolean;
+      readonly resetRetry: boolean;
     }
   | {
       readonly _tag: "Failure";
@@ -83,7 +84,7 @@ type EstablishmentEvent =
         TracedAttemptFailure
       >;
     }
-  | { readonly _tag: "Interrupted" }
+  | { readonly _tag: "Interrupted"; readonly resetRetry: boolean }
   | { readonly _tag: "TimedOut" };
 
 function exitUnlessInterrupted<A, E, R>(
@@ -169,7 +170,7 @@ function failureFromExit<A>(
   stable: boolean,
 ): AttemptOutcome {
   if (Exit.isSuccess(exit) || Cause.hasInterruptsOnly(exit.cause)) {
-    return { _tag: "Interrupted", established, stable };
+    return { _tag: "Interrupted", established, stable, resetRetry: false };
   }
   const typedFailure = exit.cause.reasons.find(Cause.isFailReason);
   if (typedFailure) {
@@ -366,21 +367,21 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       switch (next._tag) {
         case "DisconnectRequested":
         case "RetryRequested":
-          return;
+          return false;
         case "NetworkChanged":
           if (next.network === "offline") {
-            return;
+            return false;
           }
           break;
         case "ConnectRequested":
           break;
         case "Wakeup":
           if (next.reason === "application-active-reconnect") {
-            return;
+            return true;
           }
           if (next.reason === "credentials-changed" && target._tag === "RelayConnectionTarget") {
             yield* logManagedRelayAccountChange;
-            return;
+            return false;
           }
           break;
       }
@@ -395,22 +396,22 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       switch (next._tag) {
         case "DisconnectRequested":
         case "RetryRequested":
-          return;
+          return false;
         case "NetworkChanged":
           if (next.network === "offline") {
-            return;
+            return false;
           }
           break;
         case "Wakeup":
           if (next.reason === "credentials-changed" && target._tag === "RelayConnectionTarget") {
             yield* logManagedRelayAccountChange;
-            return;
+            return false;
           }
           if (next.reason === "application-active-reconnect") {
             // Mobile operating systems commonly suspend sockets without
             // delivering a close event. A long background resume deliberately
             // replaces that lease and starts a fresh attempt without backoff.
-            return;
+            return true;
           }
           if (next.reason === "application-active" || next.reason === "application-active-probe") {
             const probe = yield* lease.session.probe.pipe(
@@ -446,21 +447,24 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
                 case "DisconnectRequested":
                 case "RetryRequested":
                   yield* Fiber.interrupt(probe);
-                  return;
+                  return false;
                 case "NetworkChanged":
                   if (probeEvent.signal.network === "offline") {
                     yield* Fiber.interrupt(probe);
-                    return;
+                    return false;
                   }
                   break;
                 case "Wakeup":
+                  if (probeEvent.signal.reason === "application-active-reconnect") {
+                    yield* Fiber.interrupt(probe);
+                    return true;
+                  }
                   if (
-                    probeEvent.signal.reason === "application-active-reconnect" ||
-                    (probeEvent.signal.reason === "credentials-changed" &&
-                      target._tag === "RelayConnectionTarget")
+                    probeEvent.signal.reason === "credentials-changed" &&
+                    target._tag === "RelayConnectionTarget"
                   ) {
                     yield* Fiber.interrupt(probe);
-                    return;
+                    return false;
                   }
                   break;
                 case "ConnectRequested":
@@ -493,7 +497,14 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
           }),
         ),
       ),
-      waitForEstablishmentInterrupt().pipe(Effect.as<EstablishmentEvent>({ _tag: "Interrupted" })),
+      waitForEstablishmentInterrupt().pipe(
+        Effect.map(
+          (resetRetry): EstablishmentEvent => ({
+            _tag: "Interrupted",
+            resetRetry,
+          }),
+        ),
+      ),
       Effect.sleep(CONNECTION_ESTABLISHMENT_TIMEOUT).pipe(
         Effect.as<EstablishmentEvent>({ _tag: "TimedOut" }),
       ),
@@ -504,6 +515,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         _tag: "Interrupted",
         established: false,
         stable: false,
+        resetRetry: establishment.resetRetry,
       } satisfies AttemptOutcome;
     }
     if (establishment._tag === "TimedOut") {
@@ -546,6 +558,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         _tag: "Interrupted",
         established: false,
         stable: false,
+        resetRetry: false,
       } satisfies AttemptOutcome;
     }
 
@@ -582,6 +595,14 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       ),
     ).pipe(exitUnlessInterrupted);
     const connectedForMs = (yield* Clock.currentTimeMillis) - connectedAt;
+    if (Exit.isSuccess(connectedExit)) {
+      return {
+        _tag: "Interrupted",
+        established: true,
+        stable: connectedForMs >= BACKOFF_RESET_AFTER_MS,
+        resetRetry: connectedExit.value,
+      } satisfies AttemptOutcome;
+    }
     return failureFromExit(target, connectedExit, true, connectedForMs >= BACKOFF_RESET_AFTER_MS);
   }, Effect.ensuring(clearLease));
 
@@ -645,6 +666,10 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         }
       }
       if (outcome._tag === "Interrupted") {
+        if (outcome.resetRetry) {
+          failureCount = 0;
+          pendingRetry = Option.none();
+        }
         continue;
       }
 
