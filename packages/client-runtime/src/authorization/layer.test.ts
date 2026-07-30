@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as ManagedRelay from "../relay/managedRelay.ts";
 import { remoteHttpClientLayer } from "../rpc/http.ts";
@@ -184,6 +185,48 @@ describe("RemoteEnvironmentAuthorization", () => {
       ).toHaveLength(1);
       expect(
         harness.fetch.calls.filter(([url]) => String(url).endsWith("/api/auth/websocket-ticket")),
+      ).toHaveLength(2);
+    }),
+  );
+
+  it.effect("revalidates a bearer descriptor after the cache expires", () =>
+    Effect.gen(function* () {
+      const reassignedEnvironmentId = EnvironmentId.make("environment-2");
+      const harness = yield* makeHarness({
+        responses: [
+          Response.json(DESCRIPTOR),
+          websocketTicket("first-ticket"),
+          Response.json({
+            ...DESCRIPTOR,
+            environmentId: reassignedEnvironmentId,
+          }),
+        ],
+      });
+
+      const failure = yield* Effect.gen(function* () {
+        const remote = yield* RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization;
+        const authorize = () =>
+          remote.authorizeBearer({
+            expectedEnvironmentId: ENVIRONMENT_ID,
+            httpBaseUrl: ENDPOINT.httpBaseUrl,
+            wsBaseUrl: ENDPOINT.wsBaseUrl,
+            bearerToken: "bearer-token",
+          });
+
+        yield* authorize();
+        yield* TestClock.adjust("10 seconds");
+        return yield* authorize().pipe(Effect.flip);
+      }).pipe(Effect.provide(Layer.merge(harness.layer, TestClock.layer())));
+
+      expect(failure).toEqual(
+        expect.objectContaining({
+          _tag: "ConnectionBlockedError",
+          reason: "configuration",
+          detail: `Connected environment ${reassignedEnvironmentId} does not match ${ENVIRONMENT_ID}.`,
+        }),
+      );
+      expect(
+        harness.fetch.calls.filter(([url]) => String(url).endsWith("/.well-known/t3/environment")),
       ).toHaveLength(2);
     }),
   );

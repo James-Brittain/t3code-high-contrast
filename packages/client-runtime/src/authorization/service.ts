@@ -59,6 +59,7 @@ export class RemoteEnvironmentAuthorization extends Context.Service<
 
 const TOKEN_EXPIRY_SAFETY_MARGIN_MS = 60_000;
 const CACHED_ENDPOINT_SOCKET_TIMEOUT_MS = 3_000;
+const BEARER_DESCRIPTOR_CACHE_TTL_MS = 10_000;
 
 function mapDpopSocketError(error: RemoteEnvironmentAuthError | ConnectionAttemptError) {
   return error._tag === "ConnectionTransientError" || error._tag === "ConnectionBlockedError"
@@ -85,6 +86,7 @@ export const make = Effect.gen(function* () {
       {
         readonly httpBaseUrl: string;
         readonly descriptor: ExecutionEnvironmentDescriptor;
+        readonly validatedAtEpochMs: number;
       }
     >
   >(new Map());
@@ -98,25 +100,29 @@ export const make = Effect.gen(function* () {
       readonly wsBaseUrl: string;
       readonly bearerToken: string;
     }) {
+      const now = yield* Clock.currentTimeMillis;
       const cachedDescriptor = (yield* Ref.get(bearerDescriptors)).get(input.expectedEnvironmentId);
-      const descriptor =
-        cachedDescriptor?.httpBaseUrl === input.httpBaseUrl
-          ? cachedDescriptor.descriptor
-          : yield* fetchDescriptor(input.httpBaseUrl).pipe(
-              Effect.provideService(HttpClient.HttpClient, httpClient),
-            );
+      const canReuseDescriptor =
+        cachedDescriptor?.httpBaseUrl === input.httpBaseUrl &&
+        cachedDescriptor.validatedAtEpochMs + BEARER_DESCRIPTOR_CACHE_TTL_MS > now;
+      const descriptor = canReuseDescriptor
+        ? cachedDescriptor.descriptor
+        : yield* fetchDescriptor(input.httpBaseUrl).pipe(
+            Effect.provideService(HttpClient.HttpClient, httpClient),
+          );
       if (descriptor.environmentId !== input.expectedEnvironmentId) {
         return yield* environmentMismatchError({
           expected: input.expectedEnvironmentId,
           actual: descriptor.environmentId,
         });
       }
-      if (cachedDescriptor?.httpBaseUrl !== input.httpBaseUrl) {
+      if (!canReuseDescriptor) {
         yield* Ref.update(bearerDescriptors, (current) => {
           const next = new Map(current);
           next.set(input.expectedEnvironmentId, {
             httpBaseUrl: input.httpBaseUrl,
             descriptor,
+            validatedAtEpochMs: now,
           });
           return next;
         });
