@@ -1,6 +1,6 @@
 import { SymbolView } from "./AppSymbol";
 import { Image } from "expo-image";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { View } from "react-native";
 import type { EnvironmentId } from "@t3tools/contracts";
 import {
@@ -10,9 +10,11 @@ import {
 import { useThemeColor } from "../lib/useThemeColor";
 import { useAssetUrl } from "../state/assets";
 import {
+  beginProjectFaviconRequest,
   hasLoadedProjectFavicon,
   markProjectFaviconFailed,
   markProjectFaviconLoaded,
+  type ProjectFaviconRequest,
 } from "./projectFaviconCache";
 
 /* ─── Component ──────────────────────────────────────────────────────── */
@@ -56,6 +58,15 @@ function ProjectFaviconImage(props: {
   readonly size: number;
 }) {
   const iconMuted = useThemeColor("--color-icon-subtle");
+  const faviconRequestRef = useRef<ProjectFaviconRequest | null>(null);
+  if (
+    faviconRequestRef.current === null ||
+    faviconRequestRef.current.cacheKey !== props.cacheKey ||
+    faviconRequestRef.current.faviconUrl !== props.faviconUrl
+  ) {
+    faviconRequestRef.current = beginProjectFaviconRequest(props.cacheKey, props.faviconUrl);
+  }
+  const faviconRequest = faviconRequestRef.current;
 
   const [status, setStatus] = useState<"loading" | "loaded" | "error">(() =>
     hasLoadedProjectFavicon(props.cacheKey) ? "loaded" : "loading",
@@ -101,11 +112,11 @@ function ProjectFaviconImage(props: {
           }}
           contentFit="contain"
           onLoad={() => {
-            markProjectFaviconLoaded(props.cacheKey, props.faviconUrl);
+            if (!markProjectFaviconLoaded(faviconRequest)) return;
             setStatus("loaded");
           }}
           onError={() => {
-            if (!markProjectFaviconFailed(props.cacheKey, props.faviconUrl)) return;
+            if (!markProjectFaviconFailed(faviconRequest)) return;
             setStatus("error");
           }}
         />

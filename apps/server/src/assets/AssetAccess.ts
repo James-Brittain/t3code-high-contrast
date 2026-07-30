@@ -173,12 +173,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
-  const issuedAt = yield* Clock.currentTimeMillis;
-  const expiresAt =
-    input.resource._tag === "project-favicon"
-      ? (Math.floor(issuedAt / PROJECT_FAVICON_TOKEN_BUCKET_MS) + 2) *
-        PROJECT_FAVICON_TOKEN_BUCKET_MS
-      : issuedAt + ASSET_TOKEN_TTL_MS;
+  let expiresAt = (yield* Clock.currentTimeMillis) + ASSET_TOKEN_TTL_MS;
   let claims: AssetClaims;
   let fileName: string;
 
@@ -372,6 +367,13 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
         }),
     ),
   );
+  if (claims.kind === "project-favicon") {
+    const issuedAt = yield* Clock.currentTimeMillis;
+    expiresAt =
+      (Math.floor(issuedAt / PROJECT_FAVICON_TOKEN_BUCKET_MS) + 2) *
+      PROJECT_FAVICON_TOKEN_BUCKET_MS;
+    claims = { ...claims, expiresAt };
+  }
   const encodedPayload = base64UrlEncode(encodeAssetClaims(claims));
   const token = `${encodedPayload}.${signPayload(encodedPayload, signingSecret)}`;
   return {
