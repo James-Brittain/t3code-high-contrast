@@ -505,10 +505,11 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
     _ textDroppableView: UIView & UITextDroppable,
     proposalForDrop drop: UITextDropRequest
   ) -> UITextDropProposal {
-    let hasImages = drop.dropSession.items.contains {
+    let items = drop.dropSession.items
+    let containsOnlyImages = !items.isEmpty && items.allSatisfy {
       $0.itemProvider.canLoadObject(ofClass: UIImage.self)
     }
-    guard hasImages else {
+    guard containsOnlyImages else {
       return drop.suggestedProposal
     }
 
