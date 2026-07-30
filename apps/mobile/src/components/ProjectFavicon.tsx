@@ -101,7 +101,10 @@ function ProjectFaviconImage(props: {
             if (props.cacheKey) loadedFaviconKeys.add(props.cacheKey);
             setStatus("loaded");
           }}
-          onError={() => setStatus("error")}
+          onError={() => {
+            if (props.cacheKey) loadedFaviconKeys.delete(props.cacheKey);
+            setStatus("error");
+          }}
         />
       ) : null}
     </View>

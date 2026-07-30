@@ -4,7 +4,7 @@ export function getProjectFaviconCacheKey(
   environmentId: string,
   workspaceRoot: string,
   url: string,
-): string {
+) {
   let revision = url;
 
   try {

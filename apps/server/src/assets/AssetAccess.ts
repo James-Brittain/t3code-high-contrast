@@ -21,7 +21,9 @@ import {
 } from "@t3tools/shared/filePreview";
 import { PROJECT_FAVICON_FALLBACK_MARKER } from "@t3tools/shared/projectFavicon";
 import * as Clock from "effect/Clock";
+import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
+import * as Encoding from "effect/Encoding";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
@@ -168,6 +170,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
   readonly resource: AssetResource;
   readonly workspaceRoot?: string;
 }) {
+  const crypto = yield* Crypto.Crypto;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
@@ -332,7 +335,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
         expiresAt,
       };
       if (relativePath && canonicalFaviconPath) {
-        const faviconInfo = yield* fileSystem.stat(canonicalFaviconPath).pipe(
+        const faviconBytes = yield* fileSystem.readFile(canonicalFaviconPath).pipe(
           Effect.mapError(
             (cause) =>
               new AssetProjectFaviconInspectionError({
@@ -341,8 +344,16 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
               }),
           ),
         );
-        const modifiedAt = Option.getOrUndefined(faviconInfo.mtime)?.getTime() ?? 0;
-        const revision = `${modifiedAt.toString(36)}-${faviconInfo.size.toString(36)}`;
+        const revision = yield* crypto.digest("SHA-256", faviconBytes).pipe(
+          Effect.map(Encoding.encodeHex),
+          Effect.mapError(
+            (cause) =>
+              new AssetProjectFaviconInspectionError({
+                resource: input.resource,
+                cause,
+              }),
+          ),
+        );
         fileName = `${PROJECT_FAVICON_VERSION_PREFIX}${revision}-${path.basename(relativePath)}`;
       } else {
         fileName = PROJECT_FAVICON_FALLBACK_MARKER;

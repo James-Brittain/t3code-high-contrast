@@ -214,13 +214,16 @@ describe("AssetAccess", () => {
         prefix: "t3-asset-favicon-",
       });
       const faviconPath = path.join(root, "favicon.svg");
-      yield* fileSystem.writeFileString(faviconPath, "<svg />");
+      const initialFavicon = "<svg>a</svg>";
+      const updatedFavicon = "<svg>b</svg>";
+      expect(updatedFavicon).toHaveLength(initialFavicon.length);
+      yield* fileSystem.writeFileString(faviconPath, initialFavicon);
       const canonicalFaviconPath = yield* fileSystem.realPath(faviconPath);
 
       const faviconResult = yield* issueAssetUrl({
         resource: { _tag: "project-favicon", cwd: root },
       });
-      expect(faviconResult.relativeUrl).toMatch(/\/v[0-9a-z]+-[0-9a-z]+-favicon\.svg$/);
+      expect(faviconResult.relativeUrl).toMatch(/\/v[0-9a-f]{64}-favicon\.svg$/);
       expect(
         yield* issueAssetUrl({
           resource: { _tag: "project-favicon", cwd: root },
@@ -235,7 +238,7 @@ describe("AssetAccess", () => {
         ),
       ).toEqual({ kind: "file", path: canonicalFaviconPath });
 
-      yield* fileSystem.writeFileString(faviconPath, "<svg>updated favicon</svg>");
+      yield* fileSystem.writeFileString(faviconPath, updatedFavicon);
       const updatedFaviconResult = yield* issueAssetUrl({
         resource: { _tag: "project-favicon", cwd: root },
       });
