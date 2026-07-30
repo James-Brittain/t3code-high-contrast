@@ -35,3 +35,10 @@ node_modules/
 *.log
 .env*
 !.env.example
+
+# Local Apple signing credentials
+/AuthKey_*.p8
+/*.p12
+/*.cer
+/*.certSigningRequest
+/*.provisionprofile
