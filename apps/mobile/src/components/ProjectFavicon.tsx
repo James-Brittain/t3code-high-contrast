@@ -62,15 +62,21 @@ function ProjectFaviconImage(props: {
     () => createProjectFaviconRequest(props.cacheKey, props.faviconUrl),
     [props.cacheKey, props.faviconUrl],
   );
+  const [activeFaviconRequest, setActiveFaviconRequest] = useState<typeof faviconRequest>(null);
   useLayoutEffect(() => {
-    beginProjectFaviconRequest(faviconRequest);
+    if (faviconRequest === null) return;
+
+    const endRequest = beginProjectFaviconRequest(faviconRequest);
+    setActiveFaviconRequest(faviconRequest);
+    return endRequest;
   }, [faviconRequest]);
 
   const [status, setStatus] = useState<"loading" | "loaded" | "error">(() =>
     hasLoadedProjectFavicon(props.cacheKey) ? "loaded" : "loading",
   );
 
-  const showImage = props.faviconUrl !== null && status === "loaded";
+  const requestIsActive = faviconRequest !== null && activeFaviconRequest === faviconRequest;
+  const showImage = requestIsActive && status === "loaded";
 
   return (
     <View
@@ -92,15 +98,15 @@ function ProjectFaviconImage(props: {
       ) : null}
 
       {/* Favicon image (hidden until loaded) */}
-      {props.faviconUrl ? (
+      {requestIsActive ? (
         <Image
-          key={props.faviconUrl}
+          key={faviconRequest.faviconUrl}
           source={{
-            uri: props.faviconUrl,
-            ...(props.cacheKey ? { cacheKey: props.cacheKey } : {}),
+            uri: faviconRequest.faviconUrl,
+            cacheKey: faviconRequest.cacheKey,
           }}
           cachePolicy="memory-disk"
-          recyclingKey={props.cacheKey}
+          recyclingKey={faviconRequest.cacheKey}
           accessibilityLabel={`${props.projectTitle} favicon`}
           style={{
             width: props.size,
