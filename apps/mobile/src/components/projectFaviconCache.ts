@@ -3,16 +3,17 @@ export interface ProjectFaviconRequest {
   readonly faviconUrl: string | null;
 }
 
-const currentFaviconRequests = new Map<string, ProjectFaviconRequest>();
+const currentFaviconUrls = new Map<string, string>();
 const loadedFaviconKeys = new Set<string>();
 
-export function beginProjectFaviconRequest(cacheKey: string | null, faviconUrl: string | null) {
-  const currentRequest = cacheKey ? currentFaviconRequests.get(cacheKey) : undefined;
-  if (currentRequest?.faviconUrl === faviconUrl) return currentRequest;
+export function createProjectFaviconRequest(cacheKey: string | null, faviconUrl: string | null) {
+  return { cacheKey, faviconUrl };
+}
 
-  const request = { cacheKey, faviconUrl };
-  if (cacheKey && faviconUrl) currentFaviconRequests.set(cacheKey, request);
-  return request;
+export function beginProjectFaviconRequest(request: ProjectFaviconRequest) {
+  if (request.cacheKey && request.faviconUrl) {
+    currentFaviconUrls.set(request.cacheKey, request.faviconUrl);
+  }
 }
 
 export function hasLoadedProjectFavicon(cacheKey: string | null) {
@@ -20,14 +21,26 @@ export function hasLoadedProjectFavicon(cacheKey: string | null) {
 }
 
 export function markProjectFaviconLoaded(request: ProjectFaviconRequest) {
-  if (request.cacheKey && currentFaviconRequests.get(request.cacheKey) !== request) return false;
+  if (
+    request.cacheKey &&
+    request.faviconUrl &&
+    currentFaviconUrls.get(request.cacheKey) !== request.faviconUrl
+  ) {
+    return false;
+  }
 
   if (request.cacheKey) loadedFaviconKeys.add(request.cacheKey);
   return true;
 }
 
 export function markProjectFaviconFailed(request: ProjectFaviconRequest) {
-  if (request.cacheKey && currentFaviconRequests.get(request.cacheKey) !== request) return false;
+  if (
+    request.cacheKey &&
+    request.faviconUrl &&
+    currentFaviconUrls.get(request.cacheKey) !== request.faviconUrl
+  ) {
+    return false;
+  }
 
   if (request.cacheKey) loadedFaviconKeys.delete(request.cacheKey);
   return true;

@@ -1,6 +1,6 @@
 import { SymbolView } from "./AppSymbol";
 import { Image } from "expo-image";
-import { useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import type { EnvironmentId } from "@t3tools/contracts";
 import {
@@ -11,10 +11,10 @@ import { useThemeColor } from "../lib/useThemeColor";
 import { useAssetUrl } from "../state/assets";
 import {
   beginProjectFaviconRequest,
+  createProjectFaviconRequest,
   hasLoadedProjectFavicon,
   markProjectFaviconFailed,
   markProjectFaviconLoaded,
-  type ProjectFaviconRequest,
 } from "./projectFaviconCache";
 
 /* ─── Component ──────────────────────────────────────────────────────── */
@@ -58,15 +58,13 @@ function ProjectFaviconImage(props: {
   readonly size: number;
 }) {
   const iconMuted = useThemeColor("--color-icon-subtle");
-  const faviconRequestRef = useRef<ProjectFaviconRequest | null>(null);
-  if (
-    faviconRequestRef.current === null ||
-    faviconRequestRef.current.cacheKey !== props.cacheKey ||
-    faviconRequestRef.current.faviconUrl !== props.faviconUrl
-  ) {
-    faviconRequestRef.current = beginProjectFaviconRequest(props.cacheKey, props.faviconUrl);
-  }
-  const faviconRequest = faviconRequestRef.current;
+  const faviconRequest = useMemo(
+    () => createProjectFaviconRequest(props.cacheKey, props.faviconUrl),
+    [props.cacheKey, props.faviconUrl],
+  );
+  useLayoutEffect(() => {
+    beginProjectFaviconRequest(faviconRequest);
+  }, [faviconRequest]);
 
   const [status, setStatus] = useState<"loading" | "loaded" | "error">(() =>
     hasLoadedProjectFavicon(props.cacheKey) ? "loaded" : "loading",
