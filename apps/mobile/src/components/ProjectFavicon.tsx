@@ -9,9 +9,11 @@ import {
 } from "@t3tools/shared/projectFavicon";
 import { useThemeColor } from "../lib/useThemeColor";
 import { useAssetUrl } from "../state/assets";
-
-/* ─── Favicon cache (matches web pattern) ────────────────────────────── */
-const loadedFaviconKeys = new Set<string>();
+import {
+  hasLoadedProjectFavicon,
+  markProjectFaviconFailed,
+  markProjectFaviconLoaded,
+} from "./projectFaviconCache";
 
 /* ─── Component ──────────────────────────────────────────────────────── */
 export function ProjectFavicon(props: {
@@ -56,7 +58,7 @@ function ProjectFaviconImage(props: {
   const iconMuted = useThemeColor("--color-icon-subtle");
 
   const [status, setStatus] = useState<"loading" | "loaded" | "error">(() =>
-    props.cacheKey && loadedFaviconKeys.has(props.cacheKey) ? "loaded" : "loading",
+    hasLoadedProjectFavicon(props.cacheKey) ? "loaded" : "loading",
   );
 
   const showImage = props.faviconUrl !== null && status === "loaded";
@@ -83,6 +85,7 @@ function ProjectFaviconImage(props: {
       {/* Favicon image (hidden until loaded) */}
       {props.faviconUrl ? (
         <Image
+          key={props.faviconUrl}
           source={{
             uri: props.faviconUrl,
             ...(props.cacheKey ? { cacheKey: props.cacheKey } : {}),
@@ -98,11 +101,11 @@ function ProjectFaviconImage(props: {
           }}
           contentFit="contain"
           onLoad={() => {
-            if (props.cacheKey) loadedFaviconKeys.add(props.cacheKey);
+            markProjectFaviconLoaded(props.cacheKey, props.faviconUrl);
             setStatus("loaded");
           }}
           onError={() => {
-            if (props.cacheKey) loadedFaviconKeys.delete(props.cacheKey);
+            if (!markProjectFaviconFailed(props.cacheKey, props.faviconUrl)) return;
             setStatus("error");
           }}
         />

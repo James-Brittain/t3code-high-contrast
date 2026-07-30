@@ -170,7 +170,6 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
   readonly resource: AssetResource;
   readonly workspaceRoot?: string;
 }) {
-  const crypto = yield* Crypto.Crypto;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
@@ -335,6 +334,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
         expiresAt,
       };
       if (relativePath && canonicalFaviconPath) {
+        const crypto = yield* Crypto.Crypto;
         const faviconBytes = yield* fileSystem.readFile(canonicalFaviconPath).pipe(
           Effect.mapError(
             (cause) =>
